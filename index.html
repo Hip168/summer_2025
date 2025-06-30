@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Công Cụ Lập Kế Hoạch Chuyến Đi Cho Sinh Viên</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals & Muted Greens -->
+    <!-- Application Structure Plan: Dashboard-style approach. The top-level view is a comparative dashboard with key metrics (cost, duration, risk) for quick decision-making. Clicking on a destination drills down into a detailed, tabbed view for that specific option (Itinerary, Cost, Lodging, Notes). This structure transforms the linear report into a non-linear, user-driven exploration tool, allowing users to compare at a high level and then dive deep into areas of interest without getting lost in a wall of text. It directly supports the user's primary task: choosing the best trip. -->
+    <!-- Visualization & Content Choices: 
+        - Main Comparison (Cost): Report Info: Total estimated costs for 3 trips. Goal: Compare. Viz: Bar Chart (Chart.js/Canvas) for minimum cost. Interaction: Tooltips on hover show exact cost range. Justification: A bar chart is the most effective way to visually compare discrete values across different categories.
+        - Risk Level: Report Info: Weather warnings for islands. Goal: Inform/Warn. Viz: Line chart (Chart.js/Canvas) on secondary axis and HTML/Tailwind with icon (e.g., ⚠️) and text color (red for high risk). Interaction: Tooltips on hover. Justification: Provides an immediate, scannable visual warning, a critical decision factor from the report.
+        - Cost Breakdown: Report Info: Cost categories for each trip. Goal: Inform. Viz: Donut Chart (Chart.js/Canvas). Interaction: Tooltips on hover. Justification: Effectively shows the proportion of each spending category relative to the total budget for a single trip.
+        - Itinerary: Report Info: Day-by-day schedule. Goal: Organize/Inform. Viz: Simple List/Text (HTML/CSS). Interaction: None needed. Justification: Presents detailed itinerary directly without hiding, as requested by the user.
+        - Detailed Comparison Table: Report Info: Duration, full cost range, key highlights for each trip. Goal: Compare/Inform. Viz: HTML Table with Tailwind styling. Interaction: None needed. Justification: Complements the chart by providing precise textual details that are hard to convey in a chart, enhancing the overall comparison.
+        - Voting Section: Report Info: User preference for destination. Goal: Engage/Collect Preference. Viz: HTML cards with text display for votes and interactive buttons. Interaction: Click button to cast a vote, requires name input and checks for single vote per name using localStorage. Justification: Provides a direct interactive element for users to express their preference, adding a fun and engaging aspect to the comparison, with persistence. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #F8F7F4;
+            color: #3D3D3D;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .nav-button {
+            transition: all 0.3s ease;
+            border-bottom: 4px solid transparent;
+        }
+        .nav-button.active {
+            border-bottom-color: #2F6C6D;
+            color: #2F6C6D;
+            font-weight: 600;
+        }
+        /* Message Box Styles */
+        .message-box-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .message-box {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 400px;
+        }
+        .message-box-title {
+            font-weight: bold;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #2F6C6D;
+        }
+        .message-box-content {
+            margin-bottom: 1.5rem;
+            color: #3D3D3D;
+        }
+        .message-box-close {
+            background: #2F6C6D;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .message-box-close:hover {
+            background: #4A8D8E;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-[#2F6C6D] mb-2">Kế Hoạch Du Lịch Hè Cho Sinh Viên</h1>
+            <p class="text-base md:text-lg text-gray-600">Công cụ so sánh và lựa chọn chuyến đi hoàn hảo cho nhóm bạn!</p>
+        </header>
+
+        <main>
+            <section id="comparison" class="mb-10 p-6 bg-white rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-bold text-center mb-6 text-gray-800">So Sánh Tổng Quan Chi Phí & Rủi Ro</h2>
+                <p class="text-center mb-6 text-gray-600">Biểu đồ dưới đây so sánh tổng chi phí ước tính tối thiểu và mức độ rủi ro thời tiết. Bạn có thể xem chi tiết hơn trong bảng bên dưới.</p>
+                <div class="chart-container h-64 md:h-80">
+                    <canvas id="costComparisonChart"></canvas>
+                </div>
+                 <div class="mt-8">
+                    <h3 class="text-xl font-bold mb-4 text-gray-800">Bảng so sánh chi tiết</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full bg-white border border-gray-200 rounded-lg">
+                            <thead>
+                                <tr class="bg-gray-100 text-gray-700 uppercase text-sm leading-normal">
+                                    <th class="py-3 px-6 text-left">Điểm đến</th>
+                                    <th class="py-3 px-6 text-left">Thời gian</th>
+                                    <th class="py-3 px-6 text-left">Chi phí/người (ước tính)</th>
+                                    <th class="py-3 px-6 text-left">Rủi ro thời tiết (tháng 7)</th>
+                                    <th class="py-3 px-6 text-left">Điểm nổi bật</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-gray-600 text-sm font-light">
+                                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                    <td class="py-3 px-6 text-left whitespace-nowrap">Cô Tô</td>
+                                    <td class="py-3 px-6 text-left">3 Ngày 2 Đêm</td>
+                                    <td class="py-3 px-6 text-left">2.3 - 3.4 triệu VNĐ</td>
+                                    <td class="py-3 px-6 text-left text-red-600 font-semibold">CAO ⚠️</td>
+                                    <td class="py-3 px-6 text-left">Biển đẹp (Vàn Chảy, Hồng Vàn), Bãi đá Cầu Mỵ, BBQ hải sản, Cô Tô Con.</td>
+                                </tr>
+                                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                    <td class="py-3 px-6 text-left whitespace-nowrap">Quan Lạn</td>
+                                    <td class="py-3 px-6 text-left">3 Ngày 2 Đêm</td>
+                                    <td class="py-3 px-6 text-left">2.1 - 3.2 triệu VNĐ</td>
+                                    <td class="py-3 px-6 text-left text-red-600 font-semibold">CAO ⚠️</td>
+                                    <td class="py-3 px-6 text-left">Eo Gió, Bãi Minh Châu, Đình Quan Lạn, Dòng sông đôi bờ cát trắng, chi phí tàu thấp hơn.</td>
+                                </tr>
+                                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                    <td class="py-3 px-6 text-left whitespace-nowrap">Quảng Bình</td>
+                                    <td class="py-3 px-6 text-left">4 Ngày 3 Đêm</td>
+                                    <td class="py-3 px-6 text-left">3.0 - 4.5 triệu VNĐ</td>
+                                    <td class="py-3 px-6 text-left text-amber-600 font-semibold">TRUNG BÌNH ☀️</td>
+                                    <td class="py-3 px-6 text-left">Hang động (Phong Nha/Thiên Đường), Zipline, Kayak, Đồi Cát Quang Phú, ẩm thực đa dạng.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-10 text-center">
+                    <h3 class="text-xl font-bold mb-4 text-gray-800">Bình chọn điểm đến yêu thích của bạn!</h3>
+                    <div class="mb-4">
+                        <label for="voterName" class="block text-gray-700 text-sm font-bold mb-2">Tên của bạn:</label>
+                        <input type="text" id="voterName" class="shadow appearance-none border rounded-lg w-full max-w-xs py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" placeholder="Nhập tên của bạn">
+                    </div>
+                    <div class="flex flex-wrap justify-center gap-4">
+                        <div class="bg-gray-50 p-4 rounded-xl shadow-sm w-48 flex flex-col items-center">
+                            <p class="text-lg font-semibold text-gray-800">Cô Tô</p>
+                            <p class="text-sm text-gray-600 mt-1 mb-3">Số lượt bình chọn: <span id="votes-coto" class="font-bold text-[#2F6C6D]">0</span></p>
+                            <button class="vote-button bg-[#2F6C6D] hover:bg-[#4A8D8E] text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200" data-trip-vote="coto">Bình chọn</button>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-xl shadow-sm w-48 flex flex-col items-center">
+                            <p class="text-lg font-semibold text-gray-800">Quan Lạn</p>
+                            <p class="text-sm text-gray-600 mt-1 mb-3">Số lượt bình chọn: <span id="votes-quanlan" class="font-bold text-[#2F6C6D]">0</span></p>
+                            <button class="vote-button bg-[#2F6C6D] hover:bg-[#4A8D8E] text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200" data-trip-vote="quanlan">Bình chọn</button>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-xl shadow-sm w-48 flex flex-col items-center">
+                            <p class="text-lg font-semibold text-gray-800">Quảng Bình</p>
+                            <p class="text-sm text-gray-600 mt-1 mb-3">Số lượt bình chọn: <span id="votes-quangbinh" class="font-bold text-[#2F6C6D]">0</span></p>
+                            <button class="vote-button bg-[#2F6C6D] hover:bg-[#4A8D8E] text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200" data-trip-vote="quangbinh">Bình chọn</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="trip-details" class="bg-white rounded-2xl shadow-lg p-4 sm:p-6">
+                <nav class="flex justify-center border-b border-gray-200 mb-6">
+                    <button class="nav-button py-4 px-6 text-lg" data-trip="coto">Cô Tô</button>
+                    <button class="nav-button py-4 px-6 text-lg" data-trip="quanlan">Quan Lạn</button>
+                    <button class="nav-button py-4 px-6 text-lg" data-trip="quangbinh">Quảng Bình</button>
+                </nav>
+
+                <div id="trip-content">
+                </div>
+            </section>
+            
+            <footer class="text-center mt-8 text-sm text-gray-500">
+                <p>Chúc các bạn có một chuyến đi thanh xuân thật đáng nhớ và an toàn!</p>
+                <p>Dữ liệu được tổng hợp và phân tích từ báo cáo kế hoạch ban đầu.</p>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Custom Message Box HTML -->
+    <div id="messageBoxOverlay" class="message-box-overlay hidden">
+        <div class="message-box">
+            <h3 id="messageBoxTitle" class="message-box-title"></h3>
+            <p id="messageBoxContent" class="message-box-content"></p>
+            <button id="messageBoxClose" class="message-box-close">Đóng</button>
+        </div>
+    </div>
+
+    <template id="tripTemplate">
+        <div class="trip-info p-2" data-trip-id="">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-center">
+                <div class="bg-gray-50 p-4 rounded-xl">
+                    <h3 class="font-bold text-lg text-gray-700">Thời gian</h3>
+                    <p class="text-xl text-[#2F6C6D] font-semibold" data-field="duration"></p>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-xl">
+                    <h3 class="font-bold text-lg text-gray-700">Chi phí / người</h3>
+                    <p class="text-xl text-[#2F6C6D] font-semibold" data-field="cost"></p>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-xl">
+                    <h3 class="font-bold text-lg text-gray-700">Rủi ro thời tiết</h3>
+                    <p class="text-xl font-semibold" data-field="risk"></p>
+                </div>
+            </div>
+
+            <div class="text-base text-gray-700 mb-8 leading-relaxed" data-field="intro"></div>
+            
+            <div class="space-y-8">
+                <div>
+                    <h3 class="text-2xl font-bold mb-4 text-[#2F6C6D]">📅 Lịch trình chi tiết</h3>
+                    <div class="space-y-4" data-field="itinerary"></div>
+                </div>
+
+                <div>
+                    <h3 class="text-2xl font-bold mb-4 text-[#2F6C6D]">💰 Phân tích chi phí</h3>
+                    <p class="text-center mb-4 text-gray-600">Biểu đồ dưới đây thể hiện tỷ lệ phân bổ chi phí cho các hạng mục chính trong chuyến đi.</p>
+                    <div class="chart-container h-80 md:h-96">
+                        <canvas data-field="costChart"></canvas>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-2xl font-bold mb-4 text-[#2F6C6D]">🏡 Gợi ý Chỗ ở & Ăn uống</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6" data-field="lodgingFood"></div>
+                </div>
+            </div>
+
+        </div>
+    </template>
+
+    <script>
+        const tripData = {
+            coto: {
+                name: "Cô Tô",
+                duration: "3 Ngày 2 Đêm",
+                cost: "2.3 - 3.4 triệu",
+                minCostForChart: 2.32,
+                maxCostForChart: 3.41,
+                risk: "<span class='text-red-600'>CAO ⚠️</span>",
+                riskLevelForChart: 3,
+                highlight: "Biển đẹp (Vàn Chảy, Hồng Vàn), Bãi đá Cầu Mỵ, BBQ hải sản, Cô Tô Con.",
+                votes: 0,
+                intro: "Lựa chọn Cô Tô mang đến trải nghiệm khám phá đảo ngọc hoang sơ với các bãi biển đẹp, hoạt động team building sôi nổi và tiệc BBQ hải sản đáng nhớ. Tuy nhiên, rủi ro thời tiết cuối tháng 7 là rất cao, cần theo dõi sát sao và chuẩn bị phương án dự phòng.",
+                itinerary: [
+                    { day: "Ngày 1: Hành trình ra đảo", activities: "<b>07:00 - 08:00:</b> Tập trung tại nhà Linh (Từ Sơn, Bắc Ninh).<br><b>08:00 - 11:30:</b> Di chuyển từ Từ Sơn đến Cảng Cái Rồng (Vân Đồn, Quảng Ninh) bằng xe 16 chỗ hoặc Limousine. Nên thuê xe 16 chỗ để tiện lợi và tiết kiệm chi phí cho nhóm.<br><b>11:30 - 13:00:</b> Ăn trưa tại khu vực Cảng Cái Rồng và mua vé tàu ra đảo. <br><b>13:15 - 14:45:</b> Lên tàu cao tốc từ cảng Cái Rồng ra đảo Cô Tô (khoảng 90-100 phút). Các hãng uy tín: Havaco, Kalong, Cô Tô 68, Quang Minh, Hải Vinh 89, Phúc Thịnh.<br><b>15:00 - 17:00:</b> Đến Cô Tô, di chuyển về homestay/nhà nghỉ (thuê xe điện, xe máy hoặc xe đạp). Nhận phòng và nghỉ ngơi.<br><b>17:00 - 18:30:</b> Tự do khám phá thị trấn Cô Tô, dạo bước trên 'Con đường tình yêu' lãng mạn.<br><b>19:00 - 21:00:</b> Ăn tối hải sản tươi ngon. Có thể lựa chọn nhà hàng (Sứa, Hoàng Hôn, Ngọc Quỳnh, Hải Âu, Úy Thanh) hoặc mua hải sản tại chợ địa phương (ốc móng tay, sá sùng, mực, tu hài, ghẹ, cá song, cầu gai, cù kỳ) và nhờ homestay chế biến hoặc tự tổ chức tiệc BBQ.<br><b>21:00 trở đi:</b> Dạo biển, thưởng thức cà phê hoặc chuẩn bị cho hoạt động câu mực đêm (nếu có điều kiện)." },
+                    { day: "Ngày 2: Khám phá các bãi biển & Điểm Check-in Nổi Tiếng", activities: "<b>05:00 - 06:30:</b> Đón bình minh tại Bãi đá Cầu Mỵ - nơi có những vách đá dựng đứng kỳ vĩ và sóng biển tung bọt trắng xóa, lý tưởng cho những bức ảnh độc đáo.<br><b>07:00 - 08:00:</b> Ăn sáng tại quán ăn địa phương (gợi ý: quán ăn sáng Cổ Nghĩa với cháo, xôi, phở hải sản giá 30.000 - 40.000 VNĐ/bát).<br><b>08:30 - 11:30:</b> Tắm biển và vui chơi tại Bãi biển Vàn Chảy (cát dài, sóng to, thích hợp thể thao biển) hoặc Bãi biển Hồng Vàn (hoang sơ, yên bình, nước trong xanh, chèo Kayak).<br><b>12:00 - 13:30:</b> Ăn trưa tại nhà hàng gần biển hoặc tự tổ chức BBQ.<br><b>14:30 - 17:00:</b> Tham quan Ngọn Hải Đăng Cô Tô (view toàn cảnh thị trấn), Con đường tình yêu & Tượng đài Bác Hồ, Rừng chõi nguyên sinh (hệ thực vật phong phú, không khí trong lành), Nhà thờ Cô Tô (kiến trúc độc đáo).<br><b>17:30 - 18:30:</b> Tự do nghỉ ngơi, chuẩn bị cho buổi tối.<br><b>19:00 - 21:00:</b> Tiệc BBQ hải sản trên bãi biển, kết hợp team building, đốt lửa trại và hát hò.<br><b>21:00 trở đi:</b> Câu mực đêm cùng ngư dân (nếu có điều kiện và nhóm quan tâm)." },
+                    { day: "Ngày 3: Cô Tô Con & Trở về", activities: "<b>07:00 - 08:00:</b> Ăn sáng và làm thủ tục trả phòng homestay.<br><b>08:30 - 11:30:</b> Tham quan Đảo Cô Tô Con - đảo hoang sơ với cát trắng, nước biển trong xanh, hệ sinh thái đa dạng. Có thể tắm biển, lặn ngắm san hô hoặc trekking rừng (cần hỏi kỹ về điều kiện thời tiết và lịch trình tàu/thuyền).<br><b>12:00 - 13:00:</b> Ăn trưa tại Cô Tô.<br><b>13:30 - 15:00:</b> Di chuyển ra cảng và lên tàu cao tốc về Cái Rồng.<br><b>15:30 - 19:00:</b> Di chuyển từ Cái Rồng về Từ Sơn bằng xe đã đặt hoặc xe Limousine/xe khách.<br><b>19:00:</b> Về đến Từ Sơn, kết thúc chuyến đi." },
+                ],
+                costBreakdown: {
+                    labels: ['Di chuyển', 'Chỗ ở', 'Ăn uống', 'Hoạt động', 'Phát sinh'],
+                    data: [860, 230, 1125, 300, 350]
+                },
+                lodgingFood: `
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <h4 class="font-bold text-lg mb-2">Chỗ ở (Ưu tiên homestay/nhà nghỉ có phòng dorm hoặc phòng lớn, tiện ích bếp chung/BBQ)</h4>
+                        <ul class="list-disc list-inside space-y-2 text-gray-600">
+                            <li><b>Nhà nghỉ Mai Lan:</b> Phòng dorm khoảng 80.000 VNĐ/người, phòng đôi 300.000 - 450.000 VNĐ/phòng. Rất tiết kiệm cho nhóm lớn.</li>
+                            <li><b>Nhà nghỉ Thanh Măng (28 phòng), Công Đắc (8 phòng), Thùy Linh (7 phòng), Tâm Tuyên (4 phòng gỗ đôi), Thắm Giáp (17 phòng):</b> Các lựa chọn có số lượng phòng đủ lớn để nhóm thuê nhiều phòng liền kề. Giá 400.000 - 800.000 VNĐ/phòng.</li>
+                            <li><b>Homestay Cô Tô Haki:</b> Nhà hai tầng, thiết kế hiện đại, phòng hai giường đôi, phù hợp nhóm lớn.</li>
+                            <li><b>Homestay Cường Thịnh Cô Tô:</b> Tòa nhà nhiều tầng với 30 phòng, giá cả phải chăng.</li>
+                            <li>Hỏi rõ về tiện ích bếp chung và khu vực BBQ khi đặt phòng.</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <h4 class="font-bold text-lg mb-2">Ăn uống (Mua hải sản tươi sống và tự tổ chức BBQ là tiết kiệm nhất)</h4>
+                        <ul class="list-disc list-inside space-y-2 text-gray-600">
+                            <li><b>Tiết kiệm nhất:</b> Mua hải sản tươi (ốc móng tay, sá sùng, mực, tu hài, ghẹ, cá song, cầu gai, cù kỳ) tại chợ địa phương và nhờ homestay chế biến hoặc tự tổ chức tiệc BBQ.</li>
+                            <li><b>Quán ăn sáng Cổ Nghĩa:</b> Cháo, xôi, phở hải sản giá 30.000 - 40.000 VNĐ/bát.</li>
+                            <li><b>Các nhà hàng hải sản:</b> Sứa, Hoàng Hôn, Ngọc Quỳnh, Hải Âu, Úy Thanh (giá bình dân).</li>
+                        </ul>
+                    </div>
+                `
+            },
+            quanlan: {
+                name: "Quan Lạn",
+                duration: "3 Ngày 2 Đêm",
+                cost: "2.1 - 3.2 triệu",
+                minCostForChart: 2.16,
+                maxCostForChart: 3.21,
+                risk: "<span class='text-red-600'>CAO ⚠️</span>",
+                riskLevelForChart: 3,
+                highlight: "Eo Gió, Bãi Minh Châu, Đình Quan Lạn, Dòng sông đôi bờ cát trắng, chi phí tàu thấp hơn.",
+                votes: 0,
+                intro: "Quan Lạn là lựa chọn có chi phí thấp hơn một chút so với Cô Tô, với vẻ đẹp bình yên và nhiều điểm check-in độc đáo như Eo Gió, bãi Minh Châu. Tương tự Cô Tô, rủi ro thời tiết cuối tháng 7 là rất cao và cần được cân nhắc kỹ lưỡng.",
+                itinerary: [
+                    { day: "Ngày 1: Hành trình ra đảo", activities: "<b>07:00 - 08:00:</b> Tập trung tại nhà Linh (Từ Sơn, Bắc Ninh).<br><b>08:00 - 11:30:</b> Di chuyển từ Từ Sơn đến Cảng Cái Rồng (Vân Đồn, Quảng Ninh) bằng xe 16 chỗ hoặc Limousine.<br><b>11:30 - 13:00:</b> Ăn trưa tại khu vực Cảng Cái Rồng và mua vé tàu ra đảo.<br><b>13:15 - 14:00:</b> Lên tàu cao tốc từ cảng Cái Rồng ra đảo Quan Lạn (chỉ khoảng 45 phút, giá vé 100.000 - 200.000 VNĐ/lượt). Các hãng: Quang Minh, Hoàng Vy, Ngọc Thế 68, Thành Hưng.<br><b>14:00 - 16:00:</b> Đến Quan Lạn, di chuyển về homestay/nhà nghỉ, nhận phòng và nghỉ ngơi (thuê xe điện, xe máy hoặc xe đạp để di chuyển trên đảo).<br><b>16:00 - 18:00:</b> Tự do khám phá Bãi biển Quan Lạn với bờ cát trắng mịn và nước biển xanh trong.<br><b>19:00 - 21:00:</b> Ăn tối hải sản tươi ngon. Nhóm có thể mua hải sản (sá sùng, sứa, tu hài, bề bề, sam biển, ốc móng tay, cầu gai, mực, cù kỳ, tôm he, cà ghim, ngao, hàu) [23, 24] tại chợ và nhờ homestay chế biến hoặc tự tổ chức tiệc BBQ.<br><b>21:00 trở đi:</b> Dạo biển, thưởng thức cà phê hoặc chuẩn bị cho hoạt động câu mực đêm cùng ngư dân (nếu có)." },
+                    { day: "Ngày 2: Khám Phá Các Bãi Biển & Di Tích Lịch Sử", activities: "<b>05:00 - 06:30:</b> Đón bình minh tại Eo Gió Quan Lạn - điểm check-in 'đỉnh của chóp' với khung cảnh núi đá hùng vĩ và đại dương xanh ngát.<br><b>07:00 - 08:00:</b> Ăn sáng tại quán ăn địa phương.<br><b>08:30 - 11:30:</b> Tắm biển và vui chơi tại Bãi biển Minh Châu (cát trắng mịn, nước trong xanh, sóng êm, thích hợp mô tô nước, thuyền kéo phao) hoặc Bãi biển Sơn Hào (hoang sơ, yên bình, ít người lui tới, ngắm hoàng hôn).<br><b>12:00 - 13:30:</b> Ăn trưa tại nhà hàng ven biển hoặc tự tổ chức BBQ.<br><b>14:30 - 17:00:</b> Tham quan Đình Quan Lạn (di tích lịch sử quốc gia), Miếu thờ Trần Khánh Dư, Dòng sông đôi bờ cát trắng (góc check-in 'thần thánh'), Bãi cỏ châu Âu & Đồi Vô Cực (điểm check-in mới lạ), Rừng cây sống ảo (nơi ánh sáng tạo ra vô vàn đốm sáng).<br><b>17:30 - 18:30:</b> Tự do nghỉ ngơi, chuẩn bị cho buổi tối.<br><b>19:00 - 21:00:</b> Tiệc BBQ hải sản trên bãi biển hoặc tại homestay.<br><b>21:00 trở đi:</b> Team building, đốt lửa trại (nếu có), hoặc dạo biển." },
+                    { day: "Ngày 3: Vườn Quốc Gia Ba Mùn & Trở Về Từ Sơn", activities: "<b>07:00 - 08:00:</b> Ăn sáng và làm thủ tục trả phòng homestay.<br><b>08:30 - 11:30:</b> Khám phá Vườn Quốc Gia Ba Mùn (nếu thời gian cho phép) - nơi tận hưởng không khí trong lành, cây xanh quý hiếm (cần cân nhắc kỹ với lịch trình tàu về).<br><b>12:00 - 13:00:</b> Ăn trưa tại Quan Lạn.<br><b>13:30 - 14:30:</b> Di chuyển ra cảng và lên tàu cao tốc về Cái Rồng.<br><b>15:00 - 18:30:</b> Di chuyển từ Cái Rồng về Từ Sơn bằng xe đã đặt hoặc xe Limousine/xe khách.<br><b>18:30:</b> Về đến Từ Sơn, kết thúc chuyến đi." },
+                ],
+                costBreakdown: {
+                    labels: ['Di chuyển', 'Chỗ ở', 'Ăn uống', 'Hoạt động', 'Phát sinh'],
+                    data: [660, 400, 1125, 200, 350]
+                },
+                lodgingFood: `
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <h4 class="font-bold text-lg mb-2">Chỗ ở (Giá tốt, có sân vườn BBQ hoặc gần biển)</h4>
+                        <ul class="list-disc list-inside space-y-2 text-gray-600">
+                            <li><b>Villa Hoa Giấy:</b> 200.000 – 500.000 VNĐ/đêm, phong cách Địa Trung Hải, sân vườn rộng, phù hợp nhóm.</li>
+                            <li><b>Mai Homestay:</b> 150.000 – 400.000 VNĐ/đêm, không gian mộc mạc, phòng 'tổ chim', có BBQ, karaoke, thuê xe đạp.</li>
+                            <li><b>Nhím Homestay:</b> Từ 340.000 VNĐ/đêm, gần bãi Minh Châu (400m), có xe đưa đón miễn phí, sân vườn rộng cho BBQ, thuê xe đạp.</li>
+                            <li><b>Nhà nghỉ Tuân Thủy:</b> Từ 300.000 VNĐ/đêm, phòng rộng rãi, chủ nhà nhiệt tình, phù hợp nhóm tiết kiệm.</li>
+                            <li>Các lựa chọn khác: Minh Vũ, Thành Thúy (từ 170.000 VNĐ/đêm), Ngân Hà (từ 300.000 VNĐ/đêm) – giá tốt, gần biển.</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <h4 class="font-bold text-lg mb-2">Ăn uống (Ưu tiên hải sản tươi sống tự chế biến)</h4>
+                        <ul class="list-disc list-inside space-y-2 text-gray-600">
+                           <li>Mua hải sản tươi sống (sá sùng, sứa, tu hài, bề bề, sam biển, ốc móng tay, mực, cù kỳ, tôm he, cà ghim, ngao, hàu) [23, 24] tại chợ địa phương và tự tổ chức BBQ hoặc nhờ homestay hỗ trợ.</li>
+                           <li>Hỏi chủ homestay hoặc người dân địa phương để được gợi ý các quán ăn bình dân, ngon miệng.</li>
+                        </ul>
+                    </div>
+                `
+            },
+            quangbinh: {
+                name: "Quảng Bình",
+                duration: "4 Ngày 3 Đêm",
+                cost: "3.0 - 4.5 triệu",
+                minCostForChart: 3.01,
+                maxCostForChart: 4.49,
+                risk: "<span class='text-amber-600'>TRUNG BÌNH ☀️</span>",
+                riskLevelForChart: 2,
+                highlight: "Hang động (Phong Nha/Thiên Đường), Zipline, Kayak, Đồi Cát Quang Phú, ẩm thực đa dạng.",
+                votes: 0,
+                intro: "Quảng Bình là lựa chọn an toàn nhất về thời tiết, rất phù hợp cho nhóm sinh viên năng động, yêu thích khám phá và mạo hiểm. Chuyến đi dài ngày hơn, chi phí cao hơn nhưng bù lại là những trải nghiệm độc nhất tại 'vương quốc hang động' và các hoạt động Zipline, trượt cát.",
+                itinerary: [
+                    { day: "Ngày 1: Hành trình dài đến Đồng Hới", activities: "<b>07:00 - 08:00:</b> Tập trung tại nhà Linh (Từ Sơn, Bắc Ninh).<br><b>08:00 - 09:00:</b> Di chuyển từ Từ Sơn đến Hà Nội bằng Limousine (Mạnh Hiếu, Việt Hoàng, Tùng Tuấn, Hùng Cường, Phúc Xuyên Limousine) có dịch vụ đón/trả tận nơi.<br><b>09:00 - 10:00:</b> Di chuyển đến điểm đón xe khách/tàu hỏa tại Hà Nội.<br><b>10:00 - 20:00 (hoặc qua đêm):</b> Di chuyển từ Hà Nội đến Đồng Hới (Quảng Bình) bằng xe khách giường nằm qua đêm (250.000 - 460.000 VNĐ/người) để tối ưu chi phí và thời gian. Các hãng: Sâm Hương, Kim Chi 265, HK BUSLINES, Quang Dũng VIP, Đức Thịnh, Thuận Hiền, Camel Travel, Queen Cafe, Nhật Tuấn, Văn Thông, Hoàng Linh.<br><b>20:00 (hoặc sáng hôm sau):</b> Đến Đồng Hới, di chuyển về homestay/khách sạn, nhận phòng và nghỉ ngơi.<br><b>20:30 trở đi:</b> Khám phá thành phố Đồng Hới về đêm, dạo Bãi biển Nhật Lệ hoặc Sông Nhật Lệ.<br><b>21:00 trở đi:</b> Ăn tối đặc sản Quảng Bình (Bánh khoái Tứ Quý, Bánh lọc mệ Xuân, Bánh bèo cô Vân, Cháo sát cá lóc Huyền Nhân, Cháo canh Gia Bảo)." },
+                    { day: "Ngày 2: Khám phá hang động & Hoạt động mạo hiểm", activities: "<b>07:00 - 08:00:</b> Ăn sáng tại homestay hoặc quán ăn địa phương.<br><b>08:30 - 12:00:</b> Tham quan Động Phong Nha (hệ thống sông chảy ngầm, bãi cát/đá đẹp) hoặc Động Thiên Đường ('hoàng cung trong lòng đất' với thạch nhũ kỳ vĩ).<br><b>12:30 - 13:30:</b> Ăn trưa tại khu vực Phong Nha (gợi ý: Nhà hàng Sơn Đoòng, khoảng 110.000-180.000đ/suất cho bàn 10 khách).<br><b>14:00 - 17:00:</b> Trải nghiệm Sông Chày – Hang Tối (Zipline, chèo Kayak, tắm sông, vé khoảng 270.000 VNĐ/người) hoặc Suối Nước Moọc (chèo Kayak, tắm suối, vé 80.000 VNĐ/người lớn) – phù hợp với nhóm yêu thích mạo hiểm.<br><b>17:30 - 18:30:</b> Di chuyển về Đồng Hới.<br><b>19:00 - 21:00:</b> Ăn tối hải sản tại Đồng Hới (gợi ý: Lương Chinh, QB Biển, Quán Gió Biển, Thiên Phú quán).<br><b>21:00 trở đi:</b> Tự do khám phá Đồng Hới về đêm." },
+                    { day: "Ngày 3: Đồi cát & Các điểm check-in khác", activities: "<b>07:00 - 08:00:</b> Ăn sáng.<br><b>08:30 - 11:30:</b> Trải nghiệm trượt cát tại Đồi Cát Quang Phú - một trong những đồi cát đẹp nhất miền Trung, lý tưởng để chụp ảnh và trượt cát.<br><b>12:00 - 13:00:</b> Ăn trưa.<br><b>14:00 - 17:00:</b> Tham quan các di tích lịch sử và điểm check-in trong thành phố Đồng Hới: Quảng Bình Quan (trung tâm thành phố), Tượng đài Mẹ Suốt (biểu tượng người phụ nữ anh hùng), Vũng Chùa – Đảo Yến (nơi an nghỉ của Đại tướng Võ Nguyên Giáp, bãi biển hoang sơ – cần cân nhắc thời gian di chuyển xa).<br><b>17:30 - 18:30:</b> Tự do nghỉ ngơi.<br><b>19:00 - 21:00:</b> Ăn tối đặc sản địa phương hoặc hải sản.<br><b>21:00 trở đi:</b> Dạo phố, mua sắm quà lưu niệm." },
+                    { day: "Ngày 4: Mua sắm & Trở về", activities: "<b>07:00 - 08:00:</b> Ăn sáng.<br><b>08:30 - 11:00:</b> Mua sắm đặc sản Quảng Bình làm quà (hải sản khô, các loại bánh đặc trưng).<br><b>11:30 - 12:30:</b> Ăn trưa.<br><b>13:00:</b> Di chuyển ra điểm đón xe khách/tàu hỏa/sân bay để về Hà Nội.<br><b>13:00 trở đi:</b> Di chuyển từ Đồng Hới về Hà Nội, sau đó về Từ Sơn.<br><b>23:00 - 00:00:</b> Về đến Từ Sơn, kết thúc chuyến đi." },
+                ],
+                costBreakdown: {
+                    labels: ['Di chuyển', 'Chỗ ở', 'Ăn uống', 'Hoạt động', 'Phát sinh'],
+                    data: [1000, 600, 1200, 450, 500]
+                },
+                lodgingFood: `
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <h4 class="font-bold text-lg mb-2">Chỗ ở (Ưu tiên homestay có phòng dorm/phòng lớn cho nhóm)</h4>
+                        <ul class="list-disc list-inside space-y-2 text-gray-600">
+                             <li><b>Tại Đồng Hới:</b>
+                                 <ul>
+                                    <li><b>Adp Homestay & Coffee:</b> 200.000 – 500.000 VNĐ/đêm, có phòng dorm, bếp chung.</li>
+                                    <li><b>Dolphin Homestay:</b> 200.000 – 600.000 VNĐ/đêm, có thể thuê nguyên căn, phù hợp nhóm đông.</li>
+                                    <li><b>Cối Xay Gió homestay & coffee:</b> 250.000 – 500.000 VNĐ/đêm, chỉ có phòng dorm, gần bãi tắm Bảo Ninh.</li>
+                                    <li><b>Adam Eva Homestay:</b> Từ 250.000 VNĐ/người, chỉ có phòng dorm.</li>
+                                    <li><b>Làng Biển homestay:</b> Nhiều loại phòng, gần bãi biển Nhật Lệ, phù hợp nhóm bạn.</li>
+                                 </ul>
+                             </li>
+                             <li><b>Tại Phong Nha (nếu muốn ở gần hang động):</b>
+                                 <ul>
+                                     <li><b>An An Homestay:</b> 100.000 – 600.000 VNĐ/đêm, phòng rộng 24-45m², chứa đến 30 người, bao gồm 1-3 bữa ăn/ngày.</li>
+                                     <li>Các homestay khác: Sy's Homestay, Sunshine Homestay, Tropical Valley Homestay, Jungle Boss Homestay, BeHome homestay, Pomelo homestay, Barefoot homestay, Bamboo's House.</li>
+                                 </ul>
+                             </li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <h4 class="font-bold text-lg mb-2">Ăn uống (Ẩm thực đa dạng, giá cả phải chăng)</h4>
+                        <ul class="list-disc list-inside space-y-2 text-gray-600">
+                           <li><b>Đặc sản địa phương giá rẻ:</b> Bánh khoái, bánh lọc, bánh bèo (15.000 - 60.000 VNĐ/món). Cháo sát cá lóc Huyền Nhân (15.000 - 20.000 VNĐ/tô), Cháo canh Gia Bảo (20.000 - 30.000 VNĐ/tô).</li>
+                           <li><b>Hải sản tươi ngon:</b> Các quán bình dân ở Đồng Hới như Lương Chinh, QB Biển, Quán Gió Biển, Thiên Phú quán (giá 10.000 - 300.000 VNĐ/món tùy loại).</li>
+                        </ul>
+                    </div>
+                `
+            }
+        };
+
+        const chartInstances = {};
+        let voterHistory = {}; // Global to store voter data
+
+        // Function to show custom message box
+        function showMessageBox(title, content) {
+            const overlay = document.getElementById('messageBoxOverlay');
+            document.getElementById('messageBoxTitle').innerText = title;
+            document.getElementById('messageBoxContent').innerText = content;
+            overlay.classList.remove('hidden');
+        }
+
+        // Function to hide custom message box
+        function hideMessageBox() {
+            document.getElementById('messageBoxOverlay').classList.add('hidden');
+        }
+
+        function formatItineraryContent(itinerary) {
+            return itinerary.map(item => `
+                <div class="border border-gray-200 rounded-lg p-4 bg-white">
+                    <h4 class="font-semibold text-lg mb-2 text-gray-800">${item.day}</h4>
+                    <p class="text-gray-600">${item.activities}</p>
+                </div>
+            `).join('');
+        }
+        
+        function renderTrip(tripId) {
+            const data = tripData[tripId];
+            if (!data) return;
+
+            const template = document.getElementById('tripTemplate').content.cloneNode(true);
+            const tripInfoDiv = template.querySelector('.trip-info');
+            tripInfoDiv.dataset.tripId = tripId;
+
+            tripInfoDiv.querySelector('[data-field="duration"]').innerHTML = data.duration;
+            tripInfoDiv.querySelector('[data-field="cost"]').innerHTML = data.cost;
+            tripInfoDiv.querySelector('[data-field="risk"]').innerHTML = data.risk;
+            tripInfoDiv.querySelector('[data-field="intro"]').innerHTML = data.intro;
+            tripInfoDiv.querySelector('[data-field="itinerary"]').innerHTML = formatItineraryContent(data.itinerary);
+            tripInfoDiv.querySelector('[data-field="lodgingFood"]').innerHTML = data.lodgingFood;
+
+            document.getElementById('trip-content').innerHTML = '';
+            document.getElementById('trip-content').appendChild(template);
+
+            renderCostBreakdownChart(tripId);
+        }
+
+        function renderCostBreakdownChart(tripId) {
+            const data = tripData[tripId].costBreakdown;
+            const canvas = document.querySelector(`[data-trip-id="${tripId}"] [data-field="costChart"]`);
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            
+            if (chartInstances[tripId]) {
+                chartInstances[tripId].destroy();
+            }
+
+            chartInstances[tripId] = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Phân bổ chi phí',
+                        data: data.data,
+                        backgroundColor: [
+                            '#4A8D8E', '#80BDBB', '#A6D9D4', '#CDEAE5', '#E6F4F2'
+                        ],
+                        borderColor: '#F8F7F4',
+                        borderWidth: 4,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: {
+                                    family: "'Be Vietnam Pro', sans-serif",
+                                    size: 12
+                                },
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(context.parsed * 1000);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '60%'
+                }
+            });
+        }
+        
+        function renderCostComparisonChart() {
+            const ctx = document.getElementById('costComparisonChart').getContext('2d');
+            const labels = Object.values(tripData).map(trip => trip.name);
+            const minCosts = Object.values(tripData).map(trip => trip.minCostForChart);
+            const maxCosts = Object.values(tripData).map(trip => trip.maxCostForChart);
+            const riskLevels = Object.values(tripData).map(trip => trip.riskLevelForChart);
+
+            if (chartInstances['comparisonChart']) {
+                chartInstances['comparisonChart'].destroy();
+            }
+
+            chartInstances['comparisonChart'] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Chi phí ước tính tối thiểu (triệu VNĐ)',
+                        data: minCosts,
+                        backgroundColor: ['#80BDBB', '#4A8D8E', '#2F6C6D'],
+                        borderRadius: 8
+                    },
+                    {
+                        label: 'Rủi ro thời tiết (1=Thấp, 2=TB, 3=Cao)',
+                        data: riskLevels,
+                        backgroundColor: ['#E57373', '#E57373', '#FFB74D'],
+                        type: 'line',
+                        yAxisID: 'y1',
+                        borderColor: '#FFA726',
+                        tension: 0.3,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Chi phí ước tính (triệu VNĐ)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value + ' tr';
+                                }
+                            }
+                        },
+                        y: {
+                           grid: { display: false }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            min: 0,
+                            max: 4,
+                            title: {
+                                display: true,
+                                text: 'Mức độ rủi ro'
+                            },
+                            grid: {
+                                drawOnChartArea: false, 
+                            },
+                            ticks: {
+                                stepSize: 1,
+                                callback: function(value) {
+                                    if (value === 1) return 'Thấp';
+                                    if (value === 2) return 'TB';
+                                    if (value === 3) return 'Cao';
+                                    return '';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.dataset.type === 'line') {
+                                        let riskText = '';
+                                        if (context.parsed.x === 3) riskText = 'Cao';
+                                        else if (context.parsed.x === 2) riskText = 'Trung bình';
+                                        else riskText = 'Thấp';
+                                        label += riskText;
+                                    } else {
+                                        const tripIndex = context.dataIndex;
+                                        const tripKey = Object.keys(tripData)[tripIndex];
+                                        const minCost = tripData[tripKey].minCostForChart;
+                                        const maxCost = tripData[tripKey].maxCostForChart;
+                                        label = `Chi phí: ${minCost} - ${maxCost} triệu VNĐ`;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateVoteCount(tripId) {
+            const voterNameInput = document.getElementById('voterName');
+            const voterName = voterNameInput.value.trim().toLowerCase();
+
+            if (!voterName) {
+                showMessageBox('Lỗi!', 'Vui lòng nhập tên của bạn để bình chọn.');
+                return;
+            }
+
+            if (voterHistory[voterName]) {
+                showMessageBox('Thông báo!', `Bạn đã bình chọn cho chuyến ${tripData[voterHistory[voterName]].name} rồi!`);
+                return;
+            }
+
+            tripData[tripId].votes++;
+            voterHistory[voterName] = tripId;
+
+            // Save to localStorage
+            localStorage.setItem('tripVotes', JSON.stringify(Object.fromEntries(
+                Object.entries(tripData).map(([key, value]) => [key, value.votes])
+            )));
+            localStorage.setItem('voterHistory', JSON.stringify(voterHistory));
+
+            // Update UI
+            document.getElementById(`votes-${tripId}`).innerText = tripData[tripId].votes;
+            showMessageBox('Thành công!', `Cảm ơn ${voterName}! Bạn đã bình chọn cho chuyến ${tripData[tripId].name}.`);
+            voterNameInput.value = ''; // Clear name input after successful vote
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const navButtons = document.querySelectorAll('.nav-button');
+            const voteButtons = document.querySelectorAll('.vote-button');
+            const messageBoxCloseButton = document.getElementById('messageBoxClose');
+            const messageBoxOverlay = document.getElementById('messageBoxOverlay');
+
+            // Load votes and voter history from localStorage
+            const storedVotes = localStorage.getItem('tripVotes');
+            const storedVoterHistory = localStorage.getItem('voterHistory');
+
+            if (storedVotes) {
+                const parsedVotes = JSON.parse(storedVotes);
+                for (const tripId in parsedVotes) {
+                    if (tripData.hasOwnProperty(tripId)) {
+                        tripData[tripId].votes = parsedVotes[tripId];
+                    }
+                }
+            }
+            if (storedVoterHistory) {
+                voterHistory = JSON.parse(storedVoterHistory);
+            }
+
+            function setActiveTrip(tripId) {
+                renderTrip(tripId);
+                navButtons.forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.trip === tripId);
+                });
+            }
+
+            navButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    setActiveTrip(e.target.dataset.trip);
+                });
+            });
+
+            voteButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const tripId = e.target.dataset.tripVote;
+                    updateVoteCount(tripId);
+                });
+            });
+
+            messageBoxCloseButton.addEventListener('click', hideMessageBox);
+            messageBoxOverlay.addEventListener('click', (e) => {
+                if (e.target === messageBoxOverlay) { // Close only when clicking outside the box
+                    hideMessageBox();
+                }
+            });
+
+            // Initialize vote counts on page load
+            for (const tripId in tripData) {
+                if (tripData.hasOwnProperty(tripId)) {
+                    document.getElementById(`votes-${tripId}`).innerText = tripData[tripId].votes;
+                }
+            }
+
+            renderCostComparisonChart();
+            setActiveTrip('coto');
+        });
+    </script>
+</body>
+</html>
