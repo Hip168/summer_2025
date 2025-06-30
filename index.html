@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kế Hoạch Chuyến Đi Du Lịch</title>
+    <title>Công Cụ Lập Kế Hoạch Chuyến Đi Cho Sinh Viên</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -95,7 +95,7 @@
 <body class="antialiased">
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
         <header class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-[#2F6C6D] mb-2">Kế Hoạch Du Lịch</h1>
+            <h1 class="text-3xl md:text-4xl font-bold text-[#2F6C6D] mb-2">Kế Hoạch Du Lịch Hè Cho Sinh Viên</h1>
             <p class="text-base md:text-lg text-gray-600">Công cụ so sánh và lựa chọn chuyến đi hoàn hảo cho nhóm bạn!</p>
         </header>
 
@@ -588,37 +588,50 @@
                             }
                         }
                     }
-                }
-            });
+                }});
         }
         
         function updateVoteCount(tripId) {
             const voterNameInput = document.getElementById('voterName');
-            const voterName = voterNameInput.value.trim().toLowerCase();
+            const voterName = voterNameInput.value.trim();
 
             if (!voterName) {
                 showMessageBox('Lỗi!', 'Vui lòng nhập tên của bạn để bình chọn.');
                 return;
             }
 
-            if (voterHistory[voterName]) {
-                showMessageBox('Thông báo!', `Bạn đã bình chọn cho chuyến ${tripData[voterHistory[voterName]].name} rồi!`);
-                return;
-            }
-
-            tripData[tripId].votes++;
-            voterHistory[voterName] = tripId;
-
-            // Save to localStorage
-            localStorage.setItem('tripVotes', JSON.stringify(Object.fromEntries(
-                Object.entries(tripData).map(([key, value]) => [key, value.votes])
-            )));
-            localStorage.setItem('voterHistory', JSON.stringify(voterHistory));
-
-            // Update UI
-            document.getElementById(`votes-${tripId}`).innerText = tripData[tripId].votes;
-            showMessageBox('Thành công!', `Cảm ơn ${voterName}! Bạn đã bình chọn cho chuyến ${tripData[tripId].name}.`);
-            voterNameInput.value = ''; // Clear name input after successful vote
+            fetch('http://127.0.0.1:5000/vote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: voterName, choice: tripId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Sau khi vote thành công, lấy lại số vote mới nhất từ server
+                    fetch('http://127.0.0.1:5000/votes')
+                        .then(res => res.json())
+                        .then(votesData => {
+                            for (const vote of votesData) {
+                                const id = vote['Lựa chọn'];
+                                const count = vote.count;
+                                if (tripData[id]) {
+                                    tripData[id].votes = count;
+                                    if (document.getElementById(`votes-${id}`)) {
+                                        document.getElementById(`votes-${id}`).innerText = count;
+                                    }
+                                }
+                            }
+                        });
+                    showMessageBox('Thành công!', `Cảm ơn ${voterName}! Bạn đã bình chọn cho chuyến ${tripData[tripId].name}.`);
+                    voterNameInput.value = '';
+                } else {
+                    showMessageBox('Thông báo!', data.message);
+                }
+            })
+            .catch(() => {
+                showMessageBox('Lỗi!', 'Không thể kết nối tới máy chủ. Vui lòng thử lại sau.');
+            });
         }
 
         document.addEventListener('DOMContentLoaded', () => {
